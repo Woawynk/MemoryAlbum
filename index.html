@@ -115,8 +115,19 @@
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client"></script>
 
-    <!-- Firebase Config (Create this file with your credentials) -->
-    <script src="firebase-config.js"></script>
+    <!-- Firebase Config -->
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyBaQWAs3E65p07KuuksVpdfTYYEsYMpwhU",
+            authDomain: "album-memory-71a3f.firebaseapp.com",
+            projectId: "album-memory-71a3f",
+            storageBucket: "album-memory-71a3f.firebasestorage.app",
+            messagingSenderId: "831264641769",
+            appId: "1:831264641769:web:7521337a9c32b440449678",
+            measurementId: "G-HE82J3EVQ9"
+        };
+        firebase.initializeApp(firebaseConfig);
+    </script>
 
     <!-- App Script -->
     <script src="script.js"></script>
