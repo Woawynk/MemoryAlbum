@@ -247,19 +247,22 @@ function closeLoginModal() {
 // ============================================
 
 function openUploadModal() {
-    const albumNameInput = document.getElementById('albumName');
+    const newAlbumInput = document.getElementById('newAlbumName');
+    const albumSelect = document.getElementById('albumSelect');
+    const albumSelectGroup = albumSelect.parentElement; // The .form-group
     const uploadModalTitle = document.getElementById('uploadModalTitle');
 
     if (currentAlbumId) {
-        // Inside an album — pre-fill and hide album name field
-        const albumTitle = document.getElementById('albumTitle').textContent;
-        albumNameInput.value = albumTitle;
-        albumNameInput.style.display = 'none';
-        uploadModalTitle.textContent = 'Thêm vào: ' + albumTitle;
+        // Inside an album — hide album selector
+        uploadModalTitle.textContent = 'Thêm vào: ' + document.getElementById('albumTitle').textContent;
+        albumSelectGroup.style.display = 'none';
+        newAlbumInput.style.display = 'none';
     } else {
-        albumNameInput.value = '';
-        albumNameInput.style.display = '';
+        // Not inside an album - show selector and populate it
         uploadModalTitle.textContent = 'Thêm Ảnh/Video';
+        albumSelectGroup.style.display = 'block';
+        newAlbumInput.style.display = 'none'; // Hide new album name input initially
+        populateAlbumSelector();
     }
 
     document.getElementById('description').value = '';
@@ -267,6 +270,29 @@ function openUploadModal() {
     document.getElementById('selectedFilesPreview').textContent = '';
     document.getElementById('fileInput').value = '';
     document.getElementById('uploadModal').classList.remove('hidden');
+}
+
+async function populateAlbumSelector() {
+    const albumSelect = document.getElementById('albumSelect');
+    albumSelect.innerHTML = '<option value="">Đang tải album...</option>';
+
+    try {
+        const snapshot = await db.collection('albums').orderBy('createdAt', 'desc').get();
+        albumSelect.innerHTML = ''; // Clear loading text
+
+        // Add option to create a new album
+        albumSelect.innerHTML += `<option value="_new_">--- Tạo Album Mới ---</option>`;
+
+        if (!snapshot.empty) {
+            snapshot.forEach(doc => {
+                const album = doc.data();
+                albumSelect.innerHTML += `<option value="${doc.id}">${album.name}</option>`;
+            });
+        }
+    } catch (error) {
+        console.error("Error populating album selector:", error);
+        albumSelect.innerHTML = '<option value="">Lỗi tải album</option>';
+    }
 }
 
 function closeUploadModal() {
@@ -354,6 +380,17 @@ function logout() {
     auth.signOut();
 }
 
+// Listen for album selection changes
+document.getElementById('albumSelect').addEventListener('change', e => {
+    const newAlbumInput = document.getElementById('newAlbumName');
+    if (e.target.value === '_new_') {
+        newAlbumInput.style.display = 'block';
+        newAlbumInput.value = '';
+        newAlbumInput.focus();
+    } else {
+        newAlbumInput.style.display = 'none';
+    }
+});
 // ============================================
 // ALBUM FUNCTIONS
 // ============================================
@@ -558,12 +595,15 @@ async function loadFiles(albumId) {
             const file = doc.data();
             const displayUrl = getDriveImageUrl(file.driveId);
 
+            // Chỉ hiện nút xoá ảnh nếu là Admin
+            const deleteBtnHtml = isAdmin ? `<button class="btn btn-delete file-btn" onclick="event.stopPropagation(); deleteFile('${doc.id}', '${file.driveId}')" title="Xoá">🗑️</button>` : '';
+
             const fileCard = document.createElement('div');
             fileCard.className = 'file-card';
             fileCard.innerHTML = `
                 <img src="${displayUrl}" class="file-thumbnail" alt="${file.name}" onclick="viewFile('${file.url}')" onerror="this.parentElement.innerHTML='<div style=padding:40px;text-align:center>⚠️ Không thể tải ảnh.</div>'">
                 <div class="file-card-overlay">
-                    <button class="btn btn-delete file-btn" onclick="event.stopPropagation(); deleteFile('${doc.id}', '${file.driveId}')" title="Xoá">🗑️</button>
+                    ${deleteBtnHtml}
                 </div>
                 <div class="file-info">
                     <span style="font-size: 11px; color: #888;">${file.uploadedAt ? new Date(file.uploadedAt.toDate()).toLocaleDateString() : 'N/A'}</span>
@@ -583,6 +623,11 @@ function viewFile(url) {
 }
 
 async function deleteFile(fileId, driveId) {
+    if (!isAdmin) {
+        alert("Chỉ Admin mới có quyền xoá ảnh!");
+        return;
+    }
+
     if (!confirm('Bạn có chắc muốn xoá file này?')) return;
 
     try {
@@ -783,8 +828,30 @@ async function uploadFiles() {
     const userEmail = currentUser ? currentUser.email : 'Guest';
 
     const files = document.getElementById('fileInput').files;
-    const albumName = document.getElementById('albumName').value.trim() || `Album ${new Date().toLocaleDateString('vi-VN')}`;
     const description = document.getElementById('description').value.trim();
+    const albumSelect = document.getElementById('albumSelect');
+
+    let albumIdToUse = currentAlbumId; // Use current album if inside one
+    let albumNameToUse;
+
+    if (!albumIdToUse) { // Not inside an album, use the selector
+        const selectedValue = albumSelect.value;
+        if (selectedValue === '_new_') {
+            albumNameToUse = document.getElementById('newAlbumName').value.trim();
+            if (!albumNameToUse) {
+                alert('Vui lòng nhập tên cho album mới!');
+                return;
+            }
+        } else if (selectedValue) {
+            albumIdToUse = selectedValue;
+            albumNameToUse = albumSelect.options[albumSelect.selectedIndex].text;
+        } else {
+            alert('Vui lòng chọn một album hoặc tạo album mới!');
+            return;
+        }
+    } else {
+        albumNameToUse = document.getElementById('albumTitle').textContent;
+    }
 
     if (files.length === 0) {
         alert('Vui lòng chọn ảnh hoặc video!');
@@ -804,19 +871,29 @@ async function uploadFiles() {
         if (!rootFolderId) throw new Error("Could not find or create root folder 'AlbumMemory'");
 
         // Create or get album in Firestore
-        let albumId = null;
+        let finalAlbumId = albumIdToUse;
         let albumDriveFolderId = null;
 
-        const albumSnapshot = await db.collection('albums')
-            .where('userId', '==', userId)
-            .where('name', '==', albumName)
-            .limit(1)
-            .get();
+        // If we have an ID, get the folder ID from it
+        if (finalAlbumId) {
+            const albumDoc = await db.collection('albums').doc(finalAlbumId).get();
+            if (albumDoc.exists) {
+                albumDriveFolderId = albumDoc.data().driveFolderId;
+            } else {
+                finalAlbumId = null; // Album was deleted, so we'll create a new one
+            }
+        } else {
+            // We only have a name, so check if it exists
+            const albumSnapshot = await db.collection('albums')
+                .where('name', '==', albumNameToUse)
+                .limit(1)
+                .get();
 
-        if (!albumSnapshot.empty) {
-            const albumDoc = albumSnapshot.docs[0];
-            albumId = albumDoc.id;
-            albumDriveFolderId = albumDoc.data().driveFolderId;
+            if (!albumSnapshot.empty) {
+                const albumDoc = albumSnapshot.docs[0];
+                finalAlbumId = albumDoc.id;
+                albumDriveFolderId = albumDoc.data().driveFolderId;
+            }
         }
 
         // Verify/Create album folder in Drive
@@ -831,20 +908,20 @@ async function uploadFiles() {
 
         if (!albumDriveFolderId) {
             uploadStatus.textContent = `📁 Đang tạo thư mục album trên Drive...`;
-            albumDriveFolderId = await getOrCreateDriveFolder(albumName, rootFolderId);
+            albumDriveFolderId = await getOrCreateDriveFolder(albumNameToUse, rootFolderId);
 
-            if (albumId) {
-                await db.collection('albums').doc(albumId).update({ driveFolderId: albumDriveFolderId });
+            if (finalAlbumId) {
+                await db.collection('albums').doc(finalAlbumId).update({ driveFolderId: albumDriveFolderId });
             } else {
                 const newAlbum = await db.collection('albums').add({
-                    name: albumName,
+                    name: albumNameToUse,
                     description: description,
                     userId: userId,
                     driveFolderId: albumDriveFolderId,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     fileCount: 0
                 });
-                albumId = newAlbum.id;
+                finalAlbumId = newAlbum.id;
             }
         }
 
@@ -867,7 +944,7 @@ async function uploadFiles() {
             const viewUrl = driveResult.webContentLink.replace('&export=download', '');
 
             await db.collection('files').add({
-                albumId: albumId,
+                albumId: finalAlbumId,
                 url: viewUrl,
                 driveId: driveResult.id,
                 name: file.name,
@@ -882,16 +959,14 @@ async function uploadFiles() {
         }
 
         // Update album file count
-        const albumRef = db.collection('albums').doc(albumId);
+        const albumRef = db.collection('albums').doc(finalAlbumId);
         const albumDoc = await albumRef.get();
         await albumRef.update({
             fileCount: (albumDoc.data().fileCount || 0) + uploadedCount
         });
 
         uploadStatus.textContent = `✅ Tải lên ${uploadedCount} file thành công!`;
-        document.getElementById('fileInput').value = '';
-        document.getElementById('albumName').value = '';
-        document.getElementById('description').value = '';
+        document.getElementById('newAlbumName').value = '';
         document.getElementById('selectedFilesPreview').textContent = '';
 
         setTimeout(() => {
