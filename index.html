@@ -116,7 +116,13 @@
                     <div id="selectedFilesPreview" class="selected-files-preview"></div>
                 </div>
 
-                <input type="text" id="albumName" placeholder="Album name...">
+                <div class="form-group">
+                    <label for="albumSelect" style="font-size: 13px; color: #888;">Chọn album hoặc tạo mới</label>
+                    <select id="albumSelect" class="album-select-input">
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+                <input type="text" id="newAlbumName" placeholder="Tên album mới..." style="display: none;">
                 <textarea id="description" placeholder="Add a caption..."></textarea>
 
                 <button class="btn btn-primary full-width" onclick="uploadFiles()">Post Now</button>
