@@ -4,28 +4,12 @@
 
 ## ✨ Tính Năng
 
-✅ **Xác thực người dùng** - Đăng ký/Đăng nhập bằng email & mật khẩu  
-✅ **Admin Control** - Chỉ Admin mới có thể tạo tài khoản mới (bảo mật)  
-✅ **Lưu trữ ảnh/video** - Sử dụng Firebase Cloud Storage  
+✅ **Chế độ Công Khai** - Mọi người có thể xem và đăng ảnh không cần tài khoản
+✅ **Admin Control** - Admin đăng nhập để quản lý và xoá ảnh/album
+✅ **Lưu trữ ảnh/video** - Sử dụng Firebase Cloud Storage & Google Drive
 ✅ **Tổ chức Albums** - Phân loại ảnh theo albums  
-✅ **Nhiều người dùng** - Chia sẻ cùng albums với các thành viên gia đình  
 ✅ **Giao diện thân thiện** - Responsive, đẹp và dễ sử dụng  
 ✅ **Deploy miễn phí** - Chạy trên GitHub Pages  
-
-## � Admin Account (Quan Trọng!)
-
-Ứng dụng này có tính năng **Admin Control** để bảo vệ:
-- ✅ Chỉ **Admin** mới có thể tạo tài khoản mới
-- ✅ User thường không thấy tab "Đăng Ký"
-- ✅ Prevent lạm dụng tạo account
-
-**Admin Account Mặc Định:**
-- Email: `van@admin.com`
-- Password: `van1508`
-
-👉 **Xem chi tiết: [ADMIN_SETUP.md](ADMIN_SETUP.md)**
-
----
 
 ## 🚀 Hướng Dẫn Cài Đặt
 
