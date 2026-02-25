@@ -106,32 +106,33 @@ auth.onAuthStateChanged(user => {
     const userEmail = document.getElementById('userEmail');
     const fabBtn = document.getElementById('fabBtn');
 
+    // Luôn hiển thị nội dung chính và nút upload
+    document.getElementById('mainContent').classList.remove('hidden');
+    if (fabBtn) fabBtn.classList.remove('hidden');
+    
+    // Khởi tạo Google Drive API ngay lập tức (cho khách dùng)
+    if (!gapiInited || !gisInited) {
+        gapiLoaded();
+        gisLoaded();
+    }
+
     if (user) {
+        // Nếu là Admin đăng nhập
         checkAdminStatus(user);
         if (loginBtn) loginBtn.style.display = 'none';
         if (userSection) userSection.style.display = 'block';
         if (userEmail) userEmail.textContent = user.displayName || user.email;
-        if (fabBtn) fabBtn.classList.remove('hidden');
-        document.getElementById('mainContent').classList.remove('hidden');
         document.getElementById('authModal').classList.add('hidden');
-
-        // Init Google Drive if not already
-        if (!gapiInited || !gisInited) {
-            gapiLoaded();
-            gisLoaded();
-        }
-
-        loadAlbums();
     } else {
+        // Nếu là Khách
         isAdmin = false;
         currentUsername = null;
         if (loginBtn) loginBtn.style.display = 'block';
         if (userSection) userSection.style.display = 'none';
-        if (fabBtn) fabBtn.classList.add('hidden');
-        document.getElementById('mainContent').classList.add('hidden');
-        document.getElementById('authModal').classList.remove('hidden');
-        updateUIBasedOnAdminStatus();
     }
+    
+    // Luôn tải danh sách album dù có đăng nhập hay không
+    loadAlbums();
 });
 
 // ============================================
@@ -358,8 +359,6 @@ function logout() {
 // ============================================
 
 async function loadAlbums() {
-    if (!currentUser) return;
-
     const albumList = document.getElementById('albumList');
     albumList.innerHTML = '<p>Đang tải albums...</p>';
 
@@ -398,8 +397,19 @@ async function loadAlbums() {
                     }
                 }
             } catch (e) { console.error("Could not load thumbnail", e); }
-
+            
+            // Add delete button for admins
+            const deleteButtonHtml = isAdmin ? `
+                <button
+                    class="btn album-delete-btn"
+                    title="Xoá Album"
+                    onclick="deleteAlbum('${doc.id}'); event.stopPropagation();">
+                    🗑️
+                </button>
+            ` : '';
+            
             albumCard.innerHTML = `
+                ${deleteButtonHtml}
                 ${thumbnailHtml}
                 <div class="album-card-content">
                     <div class="album-card-title">${album.name}</div>
@@ -417,39 +427,70 @@ async function loadAlbums() {
 }
 
 async function deleteAlbum(albumId) {
-    if (!confirm('Bạn có chắc muốn xoá album này? Tất cả ảnh/video cũng sẽ bị xoá!')) return;
+    if (!isAdmin) {
+        alert("Chỉ admin mới có quyền xoá album.");
+        return;
+    }
+
+    if (!confirm('Bạn có chắc muốn xoá vĩnh viễn album này? Tất cả ảnh/video bên trong cũng sẽ bị xoá! Hành động này không thể hoàn tác.')) return;
+
+    // Show a loading indicator by reducing opacity
+    const albumCard = document.querySelector(`[onclick*="deleteAlbum('${albumId}')"]`).closest('.album-card');
+    if (albumCard) {
+        albumCard.style.pointerEvents = 'none';
+        albumCard.style.opacity = '0.5';
+    }
 
     try {
         const albumRef = db.collection('albums').doc(albumId);
         const albumDoc = await albumRef.get();
-        if (!albumDoc.exists) return;
-
+        if (!albumDoc.exists) {
+            console.warn("Album to delete not found in Firestore.");
+            loadAlbums(); // Refresh UI
+            return;
+        }
         const albumData = albumDoc.data();
+
+        // Ensure we have a Drive token if we need to delete a folder
+        if (albumData.driveFolderId && !driveAccessToken) {
+            console.log("Cần quyền truy cập Drive để xoá thư mục. Yêu cầu token...");
+            await getDriveToken();
+        }
 
         // 1. Delete the folder on Drive (this deletes all files inside)
         if (gapiInited && driveAccessToken && albumData.driveFolderId) {
+            console.log(`Attempting to delete Drive folder: ${albumData.driveFolderId}`);
             try {
                 await gapi.client.drive.files.delete({
                     fileId: albumData.driveFolderId
                 });
                 console.log("Deleted album folder from Drive");
             } catch (e) {
-                console.error("Could not delete folder from Drive", e);
+                console.error("Could not delete folder from Drive, it might already be deleted or permissions are missing.", e);
+                // Don't stop the process, just log the error. The folder might not exist or be accessible.
             }
         }
 
         // 2. Delete file records from Firestore
         const filesSnapshot = await db.collection('files').where('albumId', '==', albumId).get();
         const batch = db.batch();
-        filesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
-        await batch.commit();
+        if (!filesSnapshot.empty) {
+            filesSnapshot.docs.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+            console.log(`Deleted ${filesSnapshot.size} file documents from Firestore.`);
+        }
 
         // 3. Delete album record from Firestore
         await albumRef.delete();
-
+        console.log("Album document deleted from Firestore. Reloading albums.");
         loadAlbums();
     } catch (error) {
         alert('Lỗi khi xoá album: ' + error.message);
+        // Restore UI on error
+        if (albumCard) {
+            albumCard.style.pointerEvents = 'auto';
+            albumCard.style.opacity = '1';
+        }
     }
 }
 
@@ -737,10 +778,9 @@ async function uploadToDrive(file, folderId) {
 }
 
 async function uploadFiles() {
-    if (!currentUser) {
-        alert('Bạn cần đăng nhập trước!');
-        return;
-    }
+    // Xác định người dùng (nếu không đăng nhập thì là anonymous)
+    const userId = currentUser ? currentUser.uid : 'anonymous';
+    const userEmail = currentUser ? currentUser.email : 'Guest';
 
     const files = document.getElementById('fileInput').files;
     const albumName = document.getElementById('albumName').value.trim() || `Album ${new Date().toLocaleDateString('vi-VN')}`;
@@ -768,7 +808,7 @@ async function uploadFiles() {
         let albumDriveFolderId = null;
 
         const albumSnapshot = await db.collection('albums')
-            .where('userId', '==', currentUser.uid)
+            .where('userId', '==', userId)
             .where('name', '==', albumName)
             .limit(1)
             .get();
@@ -799,7 +839,7 @@ async function uploadFiles() {
                 const newAlbum = await db.collection('albums').add({
                     name: albumName,
                     description: description,
-                    userId: currentUser.uid,
+                    userId: userId,
                     driveFolderId: albumDriveFolderId,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                     fileCount: 0
@@ -834,7 +874,7 @@ async function uploadFiles() {
                 type: file.type,
                 size: file.size,
                 uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
-                uploadedBy: currentUser.email,
+                uploadedBy: userEmail,
                 thumbnail: driveResult.thumbnailLink || viewUrl
             });
 

@@ -6,6 +6,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Memory Album</title>
     <link rel="stylesheet" href="style.css">
+    <style>
+        .album-card {
+            position: relative;
+        }
+
+        .album-delete-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            background-color: rgba(211, 47, 47, 0.8);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+        }
+
+        .album-card:hover .album-delete-btn {
+            opacity: 1;
+        }
+    </style>
 </head>
 
 <body>
@@ -14,7 +43,7 @@
         <nav class="navbar">
             <h1 class="logo">Memory Album</h1>
             <div class="nav-buttons">
-                <button id="loginBtn" class="btn btn-primary" onclick="openLoginModal()">Login</button>
+                <button id="loginBtn" class="btn btn-secondary" onclick="openLoginModal()">Admin</button>
                 <div id="userSection" style="display:none; text-align: right;">
                     <span id="userEmail" class="user-info"></span>
                     <button class="btn btn-secondary" onclick="logout()"
@@ -29,9 +58,7 @@
                 <button class="close-btn" onclick="closeLoginModal()">&times;</button>
 
                 <div class="tab-buttons" id="tabButtons">
-                    <button class="tab-btn active" onclick="switchAuthTab('login')">Login</button>
-                    <button class="tab-btn" id="signupTabBtn" onclick="switchAuthTab('signup')"
-                        style="display:none;">Join</button>
+                    <button class="tab-btn active" onclick="switchAuthTab('login')">Admin Login</button>
                 </div>
 
                 <!-- Login Form -->
@@ -59,7 +86,7 @@
             </div>
         </div>
 
-        <div id="mainContent" class="main-content hidden">
+        <div id="mainContent" class="main-content">
             <section id="albumSection" class="album-section">
                 <h2>YOUR ALBUMS</h2>
                 <div id="albumList" class="album-grid"></div>
@@ -103,7 +130,7 @@
             </div>
         </div>
 
-        <button id="fabBtn" class="fab-btn hidden" onclick="openUploadModal()">+</button>
+        <button id="fabBtn" class="fab-btn" onclick="openUploadModal()">+</button>
     </div>
 
     <!-- Firebase Scripts (compat build) -->
