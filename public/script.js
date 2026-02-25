@@ -1,4 +1,12 @@
 // ============================================
+// CONSTANTS & CONFIG
+// ============================================
+// TODO: Bạn cần lấy Client ID từ Google Cloud Console để tính năng upload hoạt động
+const GOOGLE_CLIENT_ID = "831264641769-anqogj5ov2mdmarq5in18naunfkspd6a.apps.googleusercontent.com"; 
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_FOLDER_NAME = "AlbumMemory";
+
+// ============================================
 // FIREBASE INITIALIZATION & AUTH
 // ============================================
 
@@ -16,8 +24,17 @@ function usernameToEmail(username) {
 }
 
 // Initialize Firebase (assumes firebase-config.js is loaded)
-const auth = firebase.auth();
-const db = firebase.firestore();
+let auth, db;
+try {
+    auth = firebase.auth();
+    db = firebase.firestore();
+} catch (e) {
+    console.error("Firebase Init Error:", e);
+    if (e.code === 'app-compat/no-app') {
+        alert("⚠️ Lỗi: Trang web đang chạy phiên bản cũ hoặc thiếu cấu hình. Vui lòng nhấn Ctrl + F5 để tải lại!");
+    }
+    throw e; // Dừng chương trình để tránh lỗi tiếp theo
+}
 
 // Google Drive state
 let tokenClient;
