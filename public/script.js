@@ -10,23 +10,16 @@ const DRIVE_FOLDER_NAME = "AlbumMemory";
 // FIREBASE INITIALIZATION & AUTH
 // ============================================
 
-let currentUser = null;
 let currentAlbumId = null;
 let isAdmin = false;
-let currentUsername = null;
 
 // Admin credentials
-const ADMIN_USERNAMES = ['admin', 'van'];
-
-// Helper function: convert username to email
-function usernameToEmail(username) {
-    return `${username.toLowerCase()}@albumlocal.com`;
-}
+const ADMIN_USERNAME = 'admin';
+const ADMIN_PASSWORD = 'van1508';
 
 // Initialize Firebase (assumes firebase-config.js is loaded)
-let auth, db;
+let db;
 try {
-    auth = firebase.auth();
     db = firebase.firestore();
 } catch (e) {
     console.error("Firebase Init Error:", e);
@@ -48,59 +41,8 @@ function getDriveImageUrl(fileId) {
     return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
 }
 
-// Check if user is admin
-async function checkAdminStatus(user) {
-    if (!user) {
-        isAdmin = false;
-        currentUsername = null;
-        return;
-    }
-
-    // Extract username from email
-    const username = user.email.split('@')[0].toLowerCase();
-    currentUsername = username;
-    console.log(`Checking Admin: ${username} (Allowed: ${ADMIN_USERNAMES})`); // Debug log
-    isAdmin = ADMIN_USERNAMES.includes(username);
-    updateUIBasedOnAdminStatus();
-}
-
-// Update UI based on admin status
-function updateUIBasedOnAdminStatus() {
-    const signupTabBtn = document.getElementById('signupTabBtn');
-    const adminWarning = document.getElementById('adminOnlyWarning');
-    const userSection = document.getElementById('userSection');
-
-    if (isAdmin) {
-        if (signupTabBtn) signupTabBtn.style.display = 'block';
-        if (adminWarning) adminWarning.style.display = 'none';
-
-        // Thêm nút "Tạo User" cho Admin nếu chưa có
-        if (userSection && !document.getElementById('adminCreateBtn')) {
-            const btn = document.createElement('button');
-            btn.id = 'adminCreateBtn';
-            btn.textContent = '➕ Tạo User';
-            btn.className = 'btn btn-secondary';
-            btn.style.marginRight = '10px';
-            btn.onclick = () => {
-                document.getElementById('authModal').classList.remove('hidden');
-                switchAuthTab('signup');
-            };
-            // Chèn nút vào đầu userSection
-            userSection.insertBefore(btn, userSection.firstChild);
-        }
-    } else {
-        if (signupTabBtn) signupTabBtn.style.display = 'none';
-        if (adminWarning) adminWarning.style.display = 'block';
-
-        // Xóa nút admin nếu không phải admin
-        const btn = document.getElementById('adminCreateBtn');
-        if (btn) btn.remove();
-    }
-}
-
-// Monitor Auth State
-auth.onAuthStateChanged(user => {
-    currentUser = user;
+// Update UI based on login state
+function updateAuthUI() {
     const loginBtn = document.getElementById('loginBtn');
     const userSection = document.getElementById('userSection');
     const userEmail = document.getElementById('userEmail');
@@ -109,30 +51,32 @@ auth.onAuthStateChanged(user => {
     // Luôn hiển thị nội dung chính và nút upload
     document.getElementById('mainContent').classList.remove('hidden');
     if (fabBtn) fabBtn.classList.remove('hidden');
-    
-    // Khởi tạo Google Drive API ngay lập tức (cho khách dùng)
-    if (!gapiInited || !gisInited) {
-        gapiLoaded();
-        gisLoaded();
-    }
 
-    if (user) {
-        // Nếu là Admin đăng nhập
-        checkAdminStatus(user);
+    if (isAdmin) {
+        // Admin Mode
         if (loginBtn) loginBtn.style.display = 'none';
         if (userSection) userSection.style.display = 'block';
-        if (userEmail) userEmail.textContent = user.displayName || user.email;
+        if (userEmail) userEmail.textContent = 'Admin';
         document.getElementById('authModal').classList.add('hidden');
     } else {
-        // Nếu là Khách
-        isAdmin = false;
-        currentUsername = null;
+        // Guest Mode
         if (loginBtn) loginBtn.style.display = 'block';
         if (userSection) userSection.style.display = 'none';
     }
+}
+
+// ============================================
+// APP INITIALIZATION
+// ============================================
+
+// Khởi chạy ứng dụng ngay lập tức
+window.addEventListener('DOMContentLoaded', () => {
+    updateAuthUI(); // Set default UI (Guest)
+    loadAlbums();   // Load data
     
-    // Luôn tải danh sách album dù có đăng nhập hay không
-    loadAlbums();
+    // Init Google Drive API
+    gapiLoaded();
+    gisLoaded();
 });
 
 // ============================================
@@ -304,80 +248,29 @@ document.getElementById('uploadModal').addEventListener('click', function (e) {
     if (e.target === this) closeUploadModal();
 });
 
-function switchAuthTab(tab) {
-    const loginForm = document.getElementById('loginForm');
-    const signupForm = document.getElementById('signupForm');
-    const tabBtns = document.querySelectorAll('.tab-btn');
-
-    if (tab === 'login') {
-        loginForm.classList.add('active');
-        signupForm.classList.remove('active');
-        tabBtns[0].classList.add('active');
-        tabBtns[1].classList.remove('active');
-    } else {
-        loginForm.classList.remove('active');
-        signupForm.classList.add('active');
-        tabBtns[0].classList.remove('active');
-        tabBtns[1].classList.add('active');
-    }
-}
-
 // Login
 document.getElementById('loginForm').addEventListener('submit', async e => {
     e.preventDefault();
     const username = document.getElementById('loginUsername').value;
     const password = document.getElementById('loginPassword').value;
-    const email = usernameToEmail(username);
 
-    try {
-        await auth.signInWithEmailAndPassword(email, password);
+    // Simple hardcoded check
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+        isAdmin = true;
         document.getElementById('loginError').textContent = '';
-    } catch (error) {
-        document.getElementById('loginError').textContent = error.message;
-    }
-});
-
-// Signup
-document.getElementById('signupForm').addEventListener('submit', async e => {
-    e.preventDefault();
-
-    // Check if user is admin
-    if (!isAdmin) {
-        document.getElementById('signupError').textContent = '❌ Chỉ Admin mới có thể tạo tài khoản mới!';
-        return;
-    }
-
-    const fullname = document.getElementById('signupFullname').value;
-    const username = document.getElementById('signupUsername').value;
-    const password = document.getElementById('signupPassword').value;
-    const confirm = document.getElementById('signupConfirm').value;
-
-    if (password !== confirm) {
-        document.getElementById('signupError').textContent = 'Mật khẩu không khớp!';
-        return;
-    }
-
-    try {
-        const email = usernameToEmail(username);
-        const result = await auth.createUserWithEmailAndPassword(email, password);
-        await result.user.updateProfile({ displayName: fullname });
-        document.getElementById('signupError').innerHTML = '<span style="color: #28a745;">✅ Tài khoản tạo thành công!</span>';
-
-        // Clear form
-        document.getElementById('signupForm').reset();
-
-        // Switch back to login tab
-        setTimeout(() => {
-            switchAuthTab('login');
-        }, 1500);
-    } catch (error) {
-        document.getElementById('signupError').textContent = error.message;
+        updateAuthUI();
+        loadAlbums(); // Reload to show delete buttons
+        document.getElementById('loginForm').reset();
+    } else {
+        document.getElementById('loginError').textContent = 'Sai tên đăng nhập hoặc mật khẩu!';
     }
 });
 
 // Logout
 function logout() {
-    auth.signOut();
+    isAdmin = false;
+    updateAuthUI();
+    loadAlbums(); // Reload to hide delete buttons
 }
 
 // Listen for album selection changes
@@ -824,8 +717,8 @@ async function uploadToDrive(file, folderId) {
 
 async function uploadFiles() {
     // Xác định người dùng (nếu không đăng nhập thì là anonymous)
-    const userId = currentUser ? currentUser.uid : 'anonymous';
-    const userEmail = currentUser ? currentUser.email : 'Guest';
+    const userId = isAdmin ? 'admin' : 'anonymous';
+    const userEmail = isAdmin ? 'Admin' : 'Guest';
 
     const files = document.getElementById('fileInput').files;
     const description = document.getElementById('description').value.trim();
